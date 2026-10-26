@@ -32,8 +32,11 @@ function send(ws, data) {
 
 function broadcast(data) {
   const raw = JSON.stringify(data);
+
   for (const ws of sockets.values()) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(raw);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(raw);
+    }
   }
 }
 
@@ -43,8 +46,13 @@ function clean(value, max = 180) {
 
 function publicPlayer(p) {
   return {
-    id: p.id, name: p.name, x: p.x, y: p.y,
-    color: p.color, hp: p.hp, grabbedBy: p.grabbedBy
+    id: p.id,
+    name: p.name,
+    x: p.x,
+    y: p.y,
+    color: p.color,
+    hp: p.hp,
+    grabbedBy: p.grabbedBy
   };
 }
 
@@ -75,11 +83,21 @@ wss.on("connection", ws => {
   players.set(id, p);
   sockets.set(id, ws);
 
-  send(ws, { type: "welcome", id, self: publicPlayer(p), ...snapshot() });
+  // Важно: не объединяем welcome со snapshot,
+  // иначе type из snapshot перезапишет welcome.
+  send(ws, {
+    type: "welcome",
+    id,
+    self: publicPlayer(p),
+    players: [...players.values()].map(publicPlayer),
+    npcs
+  });
+
   broadcast({ type: "player-joined", player: publicPlayer(p) });
 
   ws.on("message", buffer => {
     let m;
+
     try {
       m = JSON.parse(buffer.toString());
     } catch {
@@ -91,33 +109,46 @@ wss.on("connection", ws => {
 
     if (m.type === "move") {
       if (Date.now() - me.lastMove < 25 || me.grabbedBy) return;
+
       me.lastMove = Date.now();
       me.x = clamp(Number(m.x) || me.x, 28, 1172);
       me.y = clamp(Number(m.y) || me.y, 28, 672);
+
       broadcast({ type: "player-moved", id, x: me.x, y: me.y });
     }
 
     if (m.type === "rename") {
       const name = clean(m.name, 18);
       if (!name) return;
+
       me.name = name;
       broadcast({ type: "player-updated", player: publicPlayer(me) });
     }
 
     if (m.type === "chat") {
       const text = clean(m.text);
-      if (text) broadcast({
-        type: "chat", from: me.name, fromId: id, text
-      });
+
+      if (text) {
+        broadcast({
+          type: "chat",
+          from: me.name,
+          fromId: id,
+          text
+        });
+      }
     }
 
+    // Старый резервный NPC-чат оставлен для совместимости.
+    // Новый локальный ИИ в браузере использует собственный обработчик.
     if (m.type === "npc-chat") {
       const npc = npcs.find(n => n.id === m.npcId);
       const text = clean(m.text);
+
       if (!npc || !text) return;
 
       broadcast({
-        type: "chat", from: me.name,
+        type: "chat",
+        from: me.name,
         text: "→ " + npc.name + ": " + text
       });
 
@@ -139,13 +170,19 @@ wss.on("connection", ws => {
           "Может, скоро здесь появятся новые места!",
           "Хорошая мысль. Я об этом подумаю."
         ];
+
         reply = replies[Math.floor(Math.random() * replies.length)];
       }
 
-      setTimeout(() => broadcast({
-        type: "chat", from: npc.name,
-        fromId: npc.id, text: reply, npc: true
-      }), 500);
+      setTimeout(() => {
+        broadcast({
+          type: "chat",
+          from: npc.name,
+          fromId: npc.id,
+          text: reply,
+          npc: true
+        });
+      }, 500);
     }
 
     if (m.type === "action") {
@@ -153,7 +190,10 @@ wss.on("connection", ws => {
       if (!target || target.id === id) return;
 
       if (Math.hypot(target.x - me.x, target.y - me.y) > 115) {
-        send(ws, { type: "notice", text: "Подойди поближе к игроку." });
+        send(ws, {
+          type: "notice",
+          text: "Подойди поближе к игроку."
+        });
         return;
       }
 
@@ -163,18 +203,34 @@ wss.on("connection", ws => {
         target.hp = clamp(target.hp - 10, 0, 100);
       } else if (m.action === "grab") {
         if (target.grabbedBy) return;
+
         target.grabbedBy = id;
         me.grabTarget = target.id;
-        broadcast({ type: "grab-state", targetId: target.id, grabbedBy: id });
+
+        broadcast({
+          type: "grab-state",
+          targetId: target.id,
+          grabbedBy: id
+        });
       } else if (m.action === "release") {
         const held = players.get(me.grabTarget);
+
         if (!held) {
-          send(ws, { type: "notice", text: "Ты никого не удерживаешь." });
+          send(ws, {
+            type: "notice",
+            text: "Ты никого не удерживаешь."
+          });
           return;
         }
+
         held.grabbedBy = null;
         me.grabTarget = null;
-        broadcast({ type: "grab-state", targetId: held.id, grabbedBy: null });
+
+        broadcast({
+          type: "grab-state",
+          targetId: held.id,
+          grabbedBy: null
+        });
       }
 
       broadcast({ type: "player-updated", player: publicPlayer(target) });
@@ -183,25 +239,35 @@ wss.on("connection", ws => {
 
   ws.on("close", () => {
     const old = players.get(id);
+
     if (old?.grabTarget) {
       const held = players.get(old.grabTarget);
       if (held) held.grabbedBy = null;
     }
 
     for (const other of players.values()) {
-      if (other.grabTarget === id) other.grabTarget = null;
+      if (other.grabTarget === id) {
+        other.grabTarget = null;
+      }
     }
 
     players.delete(id);
     sockets.delete(id);
-    broadcast({ type: "player-left", id, name: old?.name || "Игрок" });
+
+    broadcast({
+      type: "player-left",
+      id,
+      name: old?.name || "Игрок"
+    });
   });
 });
 
 setInterval(() => {
   for (const npc of npcs) {
-    if (Math.random() < 0.025 ||
-        Math.hypot(npc.tx - npc.x, npc.ty - npc.y) < 8) {
+    if (
+      Math.random() < 0.025 ||
+      Math.hypot(npc.tx - npc.x, npc.ty - npc.y) < 8
+    ) {
       npc.tx = 60 + Math.random() * 1080;
       npc.ty = 60 + Math.random() * 580;
     }
