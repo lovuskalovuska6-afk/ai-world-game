@@ -1,9 +1,7 @@
-
 {
   "name": "ai-world-game",
   "version": "1.0.0",
   "private": true,
-  "description": "AI WORLD multiplayer sandbox",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
