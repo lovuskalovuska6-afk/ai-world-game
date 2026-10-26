@@ -1,0 +1,246 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>AI WORLD</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1020;color:#eef4ff;font:15px Arial,sans-serif}
+header{padding:14px;background:#141d32;border-bottom:1px solid #33415e;display:flex;justify-content:space-between;gap:10px}
+h1{font-size:21px;margin:0;color:#7dd3fc}
+#status{font-size:12px;color:#86efac;align-self:center}
+main{max-width:1100px;margin:auto;padding:10px;display:grid;grid-template-columns:1fr 280px;gap:10px}
+.panel{background:#151e32;border:1px solid #33415e;border-radius:13px;padding:12px;min-width:0}
+canvas{width:100%;display:block;border-radius:8px;background:#111b2d;touch-action:none}
+h2{font-size:15px;margin:0 0 10px}
+input,button{font:inherit;padding:10px;border:1px solid #3c4b69;border-radius:8px;background:#0b1324;color:white}
+button{cursor:pointer}
+button:active{background:#24516a}
+.row{display:flex;gap:6px;margin-top:8px}
+.row input{width:100%;min-width:0}
+.side{display:flex;flex-direction:column;gap:10px}
+#chat{height:190px;overflow:auto;background:#0b1324;border-radius:8px;padding:8px;font-size:13px;overflow-wrap:anywhere}
+.msg{margin-bottom:8px}
+.msg b{color:#7dd3fc}
+.msg.npc b{color:#f9a8d4}
+#people{max-height:130px;overflow:auto;font-size:13px}
+.person{padding:7px;margin:4px 0;background:#0b1324;border-radius:6px;cursor:pointer}
+.person.sel{outline:1px solid #7dd3fc}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.controls{display:none;grid-template-columns:repeat(3,48px);gap:5px;justify-content:center;margin:10px}
+.controls button{height:42px;padding:0;font-size:19px;touch-action:none}
+.small{font-size:12px;color:#9eacc8;line-height:1.4}
+@media(max-width:760px){main{grid-template-columns:1fr;padding:7px}.side{display:grid;grid-template-columns:1fr 1fr}.chatpanel{grid-column:1/-1}.controls{display:grid}#chat{height:150px}}
+@media(max-width:420px){.side{grid-template-columns:1fr}.chatpanel{grid-column:auto}}
+</style>
+</head>
+<body>
+<header>
+<h1>🌐 AI WORLD</h1>
+<div id="status">Подключение...</div>
+</header>
+<main>
+<section class="panel">
+<h2>Мир игроков</h2>
+<canvas id="world" width="900" height="525"></canvas>
+<div class="controls">
+<span></span><button data-dir="up">▲</button><span></span>
+<button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button>
+</div>
+<div class="row">
+<input id="myname" maxlength="18" placeholder="Твоё имя">
+<button id="rename">Сменить</button>
+</div>
+<p class="small">Двигайся кнопками или WASD. Нажми на персонажа, чтобы выбрать его.</p>
+</section>
+<aside class="side">
+<section class="panel">
+<h2>Персонажи онлайн</h2>
+<div id="people">Загрузка...</div>
+<div id="selected" class="small">Выбери персонажа на карте.</div>
+<div class="actions">
+<button id="heal">💚 Помочь</button>
+<button id="hit">👊 Толкнуть</button>
+<button id="grab">✊ Схватить</button>
+<button id="release">↗ Отпустить</button>
+</div>
+</section>
+<section class="panel chatpanel">
+<h2>💬 Общий чат</h2>
+<div id="chat"></div>
+<form class="row" id="chatform">
+<input id="message" maxlength="180" placeholder="Написать всем...">
+<button>➤</button>
+</form>
+<form class="row" id="npcform">
+<input id="npcmessage" maxlength="160" placeholder="Сказать выбранному NPC...">
+<button>NPC</button>
+</form>
+</section>
+</aside>
+</main>
+<script>
+(()=>{
+const canvas=document.getElementById('world'),ctx=canvas.getContext('2d');
+const status=document.getElementById('status'),people=document.getElementById('people');
+const chat=document.getElementById('chat'),selectedText=document.getElementById('selected');
+let ws,id=null,players=new Map(),npcs=new Map(),selected=null,keys={},lastMove=0;
+
+function send(data){if(ws&&ws.readyState===1)ws.send(JSON.stringify(data))}
+function say(from,text,isNpc=false){
+ const div=document.createElement('div');div.className='msg'+(isNpc?' npc':'');
+ const b=document.createElement('b');b.textContent=from+': ';
+ div.append(b,document.createTextNode(text));chat.append(div);
+ while(chat.children.length>60)chat.firstChild.remove();
+ chat.scrollTop=chat.scrollHeight;
+}
+function notice(t){say('Система',t)}
+function me(){return players.get(id)}
+function chosen(){return selected?.kind==='player'?players.get(selected.id):npcs.get(selected?.id)}
+function all(){return [...players.values(),...npcs.values()]}
+
+function choose(kind,c){
+ selected={kind,id:c.id};
+ selectedText.textContent=c.name+(kind==='player'?' · '+c.hp+' HP':' · NPC');
+ renderPeople();
+}
+function renderPeople(){
+ people.replaceChildren();
+ for(const p of players.values()){
+  const d=document.createElement('div');
+  d.className='person'+(selected?.id===p.id?' sel':'');
+  d.textContent=(p.id===id?'🟢 ':'🔵 ')+p.name+' — '+p.hp+' HP';
+  d.onclick=()=>choose('player',p);people.append(d);
+ }
+ for(const n of npcs.values()){
+  const d=document.createElement('div');
+  d.className='person'+(selected?.id===n.id?' sel':'');
+  d.textContent='🤖 '+n.name+' (NPC)';
+  d.onclick=()=>choose('npc',n);people.append(d);
+ }
+}
+function connect(){
+ const proto=location.protocol==='https:'?'wss:':'ws:';
+ ws=new WebSocket(proto+'//'+location.host);
+ ws.onopen=()=>status.textContent='● Онлайн';
+ ws.onclose=()=>{status.textContent='Переподключение...';setTimeout(connect,2000)};
+ ws.onerror=()=>status.textContent='Ошибка соединения';
+ ws.onmessage=e=>{
+  let m;try{m=JSON.parse(e.data)}catch{return}
+  if(m.type==='welcome'){
+   id=m.id;players=new Map((m.players||[]).map(p=>[p.id,p]));
+   players.set(m.self.id,m.self);npcs=new Map((m.npcs||[]).map(n=>[n.id,n]));
+   document.getElementById('myname').value=m.self.name;renderPeople();
+   say('Система','Добро пожаловать в AI WORLD!');
+  }
+  if(m.type==='snapshot'){
+   (m.players||[]).forEach(p=>players.set(p.id,p));
+   (m.npcs||[]).forEach(n=>npcs.set(n.id,n));renderPeople();
+  }
+  if(m.type==='player-joined'){
+   players.set(m.player.id,m.player);renderPeople();
+   say('Мир',m.player.name+' присоединился.');
+  }
+  if(m.type==='player-left'){
+   players.delete(m.id);renderPeople();say('Мир',m.name+' вышел.');
+  }
+  if(m.type==='player-moved'){
+   const p=players.get(m.id);
+   if(p){p.x=m.x;p.y=m.y}
+  }
+  if(m.type==='player-updated'){
+   players.set(m.player.id,m.player);renderPeople();
+   if(selected?.id===m.player.id)selectedText.textContent=m.player.name+' · '+m.player.hp+' HP';
+  }
+  if(m.type==='players'){
+   players=new Map((m.players||[]).map(p=>[p.id,p]));renderPeople();
+  }
+  if(m.type==='npc-update'){
+   npcs=new Map((m.npcs||[]).map(n=>[n.id,n]));renderPeople();
+  }
+  if(m.type==='chat')say(m.from,m.text,!!m.npc);
+  if(m.type==='notice')notice(m.text);
+  if(m.type==='grab-state'){
+   const p=players.get(m.targetId);if(p)p.grabbedBy=m.grabbedBy;
+  }
+ };
+}
+function draw(){
+ const W=canvas.width,H=canvas.height;
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#111b2d';ctx.fillRect(0,0,W,H);
+ ctx.strokeStyle='#202d45';
+ for(let x=0;x<W;x+=30){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+ for(let y=0;y<H;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+ ctx.fillStyle='#1d3046';ctx.fillRect(90,80,170,80);ctx.fillRect(620,350,170,85);
+ ctx.fillStyle='#7d93b6';ctx.font='bold 15px Arial';ctx.textAlign='center';
+ ctx.fillText('ПЛОЩАДЬ',450,260);ctx.fillText('САД',175,125);ctx.fillText('ОТДЫХ',705,395);
+ for(const c of all()){
+  const x=c.x/1200*W,y=c.y/700*H;
+  if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+  if(selected?.id===c.id){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,19,0,Math.PI*2);ctx.stroke()}
+  ctx.fillStyle=c.color||'#7dd3fc';ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y-16,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#eaf0ff';ctx.font='12px Arial';ctx.fillText(c.name,x,y-29);
+  if(c.hp!==undefined){ctx.fillStyle='#26334a';ctx.fillRect(x-14,y+16,28,4);ctx.fillStyle='#86efac';ctx.fillRect(x-14,y+16,28*Math.max(0,c.hp)/100,4)}
+ }
+ requestAnimationFrame(draw);
+}
+canvas.addEventListener('pointerdown',e=>{
+ const r=canvas.getBoundingClientRect();
+ const x=(e.clientX-r.left)/r.width*1200,y=(e.clientY-r.top)/r.height*700;
+ let nearest=null,best=45;
+ for(const c of all()){const d=Math.hypot(c.x-x,c.y-y);if(d<best){best=d;nearest=c}}
+ if(nearest)choose(players.has(nearest.id)?'player':'npc',nearest);
+});
+function move(dx,dy){
+ const p=me();if(!p||p.grabbedBy)return;
+ const len=Math.hypot(dx,dy)||1;
+ p.x=Math.max(28,Math.min(1172,p.x+dx/len*6));
+ p.y=Math.max(28,Math.min(672,p.y+dy/len*6));
+ if(Date.now()-lastMove>35){send({type:'move',x:p.x,y:p.y});lastMove=Date.now()}
+}
+function movementLoop(){
+ let dx=0,dy=0;
+ if(keys.w||keys.arrowup)dy--;if(keys.s||keys.arrowdown)dy++;
+ if(keys.a||keys.arrowleft)dx--;if(keys.d||keys.arrowright)dx++;
+ if(dx||dy)move(dx,dy);
+ requestAnimationFrame(movementLoop);
+}
+window.addEventListener('keydown',e=>{
+ if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;
+ const k=e.key.toLowerCase();
+ if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){keys[k]=true;e.preventDefault()}
+});
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+const dirs={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'};
+document.querySelectorAll('[data-dir]').forEach(b=>{
+ const k=dirs[b.dataset.dir];
+ b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true});
+ for(const ev of ['pointerup','pointercancel','pointerleave'])b.addEventListener(ev,()=>keys[k]=false);
+});
+document.getElementById('rename').onclick=()=>send({type:'rename',name:document.getElementById('myname').value});
+document.getElementById('chatform').onsubmit=e=>{
+ e.preventDefault();const i=document.getElementById('message');
+ if(i.value.trim())send({type:'chat',text:i.value});i.value='';
+};
+document.getElementById('npcform').onsubmit=e=>{
+ e.preventDefault();const i=document.getElementById('npcmessage');
+ if(selected?.kind!=='npc')notice('Сначала выбери NPC.');
+ else if(i.value.trim())send({type:'npc-chat',npcId:selected.id,text:i.value});
+ i.value='';
+};
+function action(a){
+ if(!selected||selected.kind!=='player'||selected.id===id){notice('Выбери другого игрока.');return}
+ send({type:'action',action:a,targetId:selected.id});
+}
+document.getElementById('heal').onclick=()=>action('heal');
+document.getElementById('hit').onclick=()=>action('hit');
+document.getElementById('grab').onclick=()=>action('grab');
+document.getElementById('release').onclick=()=>send({type:'action',action:'release',targetId:selected?.id});
+connect();requestAnimationFrame(draw);requestAnimationFrame(movementLoop);
+})();
+</script>
+</body>
+</html>
