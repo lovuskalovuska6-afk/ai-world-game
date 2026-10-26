@@ -1,20 +1,20 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>AI WORLD 3D</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#0b1020;color:#eef4ff;font:15px Arial,sans-serif}
-header{padding:12px;background:#141d32;display:flex;justify-content:space-between}
+header{padding:12px;background:#141d32;display:flex;justify-content:space-between;gap:8px}
 h1{font-size:20px;margin:0;color:#7dd3fc}
 main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10px}
 .panel{background:#151e32;border:1px solid #33415e;border-radius:12px;padding:10px;min-width:0}
-#game{width:100%;height:min(65vh,600px);min-height:300px;display:block;touch-action:none;border-radius:8px}
+#game{width:100%;height:65vh;min-height:350px;display:block;touch-action:none;border-radius:8px}
 button,input{font:inherit;padding:9px;border:1px solid #3c4b69;border-radius:8px;background:#0b1324;color:white}
 button{cursor:pointer}
-button:active{background:#24516a}
 .row{display:flex;gap:5px;margin-top:8px}
 .row input{min-width:0;flex:1}
 .side{display:flex;flex-direction:column;gap:10px}
@@ -22,28 +22,21 @@ button:active{background:#24516a}
 .person{padding:8px;margin:4px 0;background:#0b1324;border-radius:6px;cursor:pointer}
 .person.sel{outline:1px solid #7dd3fc}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px}
-#chat{height:140px;overflow:auto;background:#0b1324;padding:8px;border-radius:8px;font-size:13px;overflow-wrap:anywhere}
+#chat{height:180px;overflow:auto;background:#0b1324;padding:8px;border-radius:8px;font-size:13px;overflow-wrap:anywhere}
 .msg{margin-bottom:6px;white-space:pre-wrap}
-.controls{position:absolute;left:16px;bottom:18px;display:grid;grid-template-columns:repeat(3,48px);gap:5px;z-index:5}
-.controls button{height:46px;padding:0;font-size:20px;background:#182b48dd;touch-action:none}
-.controls span{pointer-events:none}
-#look{position:absolute;right:15px;bottom:30px;width:100px;height:100px;border:1px solid #9ab8df66;border-radius:50%;z-index:4;touch-action:none}
 .small{font-size:12px;color:#9eacc8}
-@media(max-width:760px){
- main{grid-template-columns:1fr;padding:6px}
- #game{height:65vh;min-height:350px}
- .side{display:grid;grid-template-columns:1fr 1fr}
- .chatpanel{grid-column:1/-1}
-}
+.controls{position:absolute;left:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,44px);gap:4px;z-index:5}
+.controls button{height:42px;padding:0;font-size:20px;touch-action:none}
+#look{position:absolute;right:14px;bottom:24px;width:95px;height:95px;border:1px solid #9ab8df88;border-radius:50%;z-index:4;touch-action:none}
+@media(max-width:760px){main{grid-template-columns:1fr;padding:6px}.side{display:grid;grid-template-columns:1fr 1fr}.chatpanel{grid-column:1/-1}}
 @media(max-width:420px){.side{grid-template-columns:1fr}.chatpanel{grid-column:auto}}
 </style>
 </head>
 <body>
 <header>
 <h1>🌐 AI WORLD 3D</h1>
-<div id="status">Загрузка...</div>
+<div id="status">Запуск...</div>
 </header>
-
 <main>
 <section class="panel">
 <div style="position:relative">
@@ -58,9 +51,8 @@ button:active{background:#24516a}
 <input id="myname" maxlength="18" placeholder="Твоё имя">
 <button id="rename">Сменить</button>
 </div>
-<p class="small">WASD или стрелки — движение. Веди пальцем по правой области, чтобы поворачивать камеру.</p>
+<p class="small">WASD — движение. Поворачивай камеру пальцем справа. Выбери NPC, чтобы общаться с ним через локальный ИИ.</p>
 </section>
-
 <aside class="side">
 <section class="panel">
 <h3>Персонажи</h3>
@@ -74,12 +66,14 @@ button:active{background:#24516a}
 </div>
 </section>
 <section class="panel chatpanel">
-<h3>💬 Общий чат</h3>
+<h3>💬 Чат с персонажем</h3>
 <div id="chat"></div>
 <form class="row" id="chatform">
-<input id="message" maxlength="180" placeholder="Сообщение...">
+<input id="message" maxlength="180" placeholder="Напиши NPC...">
 <button>➤</button>
 </form>
+<button id="loadAI" style="width:100%;margin-top:8px">🧠 Загрузить локальный ИИ</button>
+<p class="small">Модель загружается в браузер при первом запуске. Загрузка может занять время и использовать несколько сотен мегабайт памяти.</p>
 </section>
 </aside>
 </main>
@@ -87,437 +81,280 @@ button:active{background:#24516a}
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
 
-const canvas=document.querySelector("#game");
-const status=document.querySelector("#status");
-const people=document.querySelector("#people");
-const chat=document.querySelector("#chat");
-const selectedText=document.querySelector("#selected");
-
+const $=s=>document.querySelector(s);
+const canvas=$("#game"),status=$("#status"),people=$("#people"),chat=$("#chat");
 const scene=new THREE.Scene();
 scene.background=new THREE.Color("#9ac7ed");
-scene.fog=new THREE.Fog("#9ac7ed",35,100);
-
-const camera=new THREE.PerspectiveCamera(70,1,0.1,300);
+scene.fog=new THREE.Fog("#9ac7ed",35,110);
+const camera=new THREE.PerspectiveCamera(70,1,.1,300);
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
-
 scene.add(new THREE.HemisphereLight(0xe4f3ff,0x60704c,2));
-const sun=new THREE.DirectionalLight(0xffffff,3);
-sun.position.set(15,25,10);
-sun.castShadow=true;
-scene.add(sun);
+const sun=new THREE.DirectionalLight(0xffffff,2.5);
+sun.position.set(15,25,10);scene.add(sun);
 
-const ground=new THREE.Mesh(
- new THREE.PlaneGeometry(160,160),
- new THREE.MeshStandardMaterial({color:0x638b53})
-);
-ground.rotation.x=-Math.PI/2;
-ground.receiveShadow=true;
-scene.add(ground);
-
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),new THREE.MeshStandardMaterial({color:0x638b53}));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
 const grid=new THREE.GridHelper(160,80,0x526e48,0x718d60);
-grid.position.y=0.015;
-scene.add(grid);
+grid.position.y=.015;scene.add(grid);
 
 function box(x,y,z,sx,sy,sz,color){
- const mesh=new THREE.Mesh(
-  new THREE.BoxGeometry(sx,sy,sz),
-  new THREE.MeshStandardMaterial({color})
- );
- mesh.position.set(x,y,z);
- mesh.castShadow=true;
- mesh.receiveShadow=true;
- scene.add(mesh);
- return mesh;
+ const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshStandardMaterial({color}));
+ m.position.set(x,y,z);scene.add(m);return m;
 }
-
-function tree(x,z){
- const trunk=new THREE.Mesh(
-  new THREE.CylinderGeometry(.18,.25,1.5,8),
-  new THREE.MeshStandardMaterial({color:0x755037})
- );
- trunk.position.set(x,.75,z);
- trunk.castShadow=true;
- scene.add(trunk);
- const crown=new THREE.Mesh(
-  new THREE.SphereGeometry(1.05,10,8),
-  new THREE.MeshStandardMaterial({color:0x2f7845})
- );
- crown.position.set(x,2,z);
- crown.castShadow=true;
- scene.add(crown);
-}
-
 function building(x,z,w,d,h,color){
  box(x,h/2,z,w,h,d,color);
  box(x,h+.15,z,w+.3,.3,d+.3,0x37455d);
- box(x,h*.6,z+d/2+.02,w*.25,h*.45,.06,0x354e68);
+ box(x,h*.55,z+d/2+.04,w*.22,h*.4,.08,0x354e68);
 }
-
+function tree(x,z){
+ const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.25,1.5,8),new THREE.MeshStandardMaterial({color:0x755037}));
+ trunk.position.set(x,.75,z);scene.add(trunk);
+ const crown=new THREE.Mesh(new THREE.SphereGeometry(1.05,10,8),new THREE.MeshStandardMaterial({color:0x2f7845}));
+ crown.position.set(x,2,z);scene.add(crown);
+}
 building(-10,-8,9,8,5,0xb5a48a);
 building(8,-12,10,7,6,0xd0c1a2);
 building(13,8,7,9,4,0x9eafc4);
 building(-13,10,8,8,5,0xc7b3a2);
-
 for(let i=0;i<35;i++){
- const x=(Math.random()-.5)*65;
- const z=(Math.random()-.5)*65;
+ const x=(Math.random()-.5)*65,z=(Math.random()-.5)*65;
  if(Math.abs(x)<18&&Math.abs(z)<18)continue;
  tree(x,z);
 }
 
-const avatars=new Map();
-const npcProfiles=[
- {id:"npc-1",name:"Мира",color:0xf0a85a},
- {id:"npc-2",name:"Роб",color:0xa78bfa},
- {id:"npc-3",name:"Кекс",color:0x5eead4},
- {id:"npc-4",name:"Луна",color:0xfb7185}
+const npcDefs=[
+ {id:"npc-1",name:"Мира",color:0xf0a85a,x:-8,z:0},
+ {id:"npc-2",name:"Роб",color:0xa78bfa,x:4,z:3},
+ {id:"npc-3",name:"Кекс",color:0x5eead4,x:8,z:-4},
+ {id:"npc-4",name:"Луна",color:0xfb7185,x:-5,z:7}
 ];
+const profiles={
+ "Мира":"Ты Мира — дружелюбная, любопытная и немного стеснительная.",
+ "Роб":"Ты Роб — спокойный, умный и рассудительный.",
+ "Кекс":"Ты Кекс — весёлый, шутливый и энергичный.",
+ "Луна":"Ты Луна — добрая, спокойная и немного загадочная."
+};
+const avatars=new Map(),memory=new Map();
+let myId="local-player",selectedId="npc-1",myName="Игрок";
+let yaw=0,pitch=.2,ai=null,aiLoading=null;
+const keys={};let lookOn=false,lastX=0,lastY=0;
 
-let socket=null;
-let myId=null;
-let selectedId=null;
-let selectedKind=null;
-let myName="Игрок";
-let cameraYaw=0;
-let cameraPitch=.2;
-const keys={};
-let touchX=0,touchY=0;
-let draggingLook=false;
-
-function makeAvatar(data,isNPC=false){
+function avatar(data,isNPC=false){
  const group=new THREE.Group();
-
- const body=new THREE.Mesh(
-  new THREE.BoxGeometry(.8,1,.42),
-  new THREE.MeshStandardMaterial({color:data.color||0x7dd3fc})
- );
- body.position.y=1.15;
- body.castShadow=true;
- group.add(body);
-
- const head=new THREE.Mesh(
-  new THREE.BoxGeometry(.58,.58,.58),
-  new THREE.MeshStandardMaterial({color:0xffd2ae})
- );
- head.position.y=1.95;
- head.castShadow=true;
- group.add(head);
-
- const hair=new THREE.Mesh(
-  new THREE.BoxGeometry(.61,.18,.61),
-  new THREE.MeshStandardMaterial({color:isNPC?0x49342b:0x344258})
- );
- hair.position.y=2.28;
- group.add(hair);
-
- const legs=[];
+ const color=new THREE.MeshStandardMaterial({color:data.color||0x7dd3fc});
+ const body=new THREE.Mesh(new THREE.BoxGeometry(.8,1,.42),color);
+ body.position.y=1.15;group.add(body);
+ const head=new THREE.Mesh(new THREE.BoxGeometry(.58,.58,.58),new THREE.MeshStandardMaterial({color:0xffd2ae}));
+ head.position.y=1.95;group.add(head);
+ const hair=new THREE.Mesh(new THREE.BoxGeometry(.61,.18,.61),new THREE.MeshStandardMaterial({color:isNPC?0x49342b:0x344258}));
+ hair.position.y=2.28;group.add(hair);
  for(const x of [-.22,.22]){
-  const leg=new THREE.Mesh(
-   new THREE.BoxGeometry(.27,.72,.3),
-   new THREE.MeshStandardMaterial({color:0x34445c})
-  );
-  leg.position.set(x,.36,0);
-  leg.castShadow=true;
-  group.add(leg);
-  legs.push(leg);
+  const leg=new THREE.Mesh(new THREE.BoxGeometry(.27,.72,.3),new THREE.MeshStandardMaterial({color:0x34445c}));
+  leg.position.set(x,.36,0);group.add(leg);
  }
-
- const labelCanvas=document.createElement("canvas");
- labelCanvas.width=512;
- labelCanvas.height=96;
- const c=labelCanvas.getContext("2d");
- c.fillStyle="#0b1324cc";
- c.fillRect(0,0,512,96);
- c.fillStyle="#ffffff";
- c.font="bold 38px Arial";
- c.textAlign="center";
- c.fillText(data.name||"Игрок",256,62);
-
+ const labelCanvas=document.createElement("canvas");labelCanvas.width=512;labelCanvas.height=96;
+ const ctx=labelCanvas.getContext("2d");
+ ctx.fillStyle="#0b1324cc";ctx.fillRect(0,0,512,96);
+ ctx.fillStyle="white";ctx.font="bold 38px Arial";ctx.textAlign="center";ctx.fillText(data.name,256,62);
  const texture=new THREE.CanvasTexture(labelCanvas);
  const label=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true}));
- label.scale.set(3.3,.62,1);
- label.position.y=2.85;
- group.add(label);
-
- const ring=new THREE.Mesh(
-  new THREE.TorusGeometry(.72,.045,8,32),
-  new THREE.MeshBasicMaterial({color:0xffffff})
- );
- ring.rotation.x=Math.PI/2;
- ring.position.y=.06;
- ring.visible=false;
- group.add(ring);
-
+ label.scale.set(3.3,.62,1);label.position.y=2.85;group.add(label);
+ const ring=new THREE.Mesh(new THREE.TorusGeometry(.72,.045,8,32),new THREE.MeshBasicMaterial({color:0xffffff}));
+ ring.rotation.x=Math.PI/2;ring.position.y=.06;group.add(ring);
  scene.add(group);
-
- return {
-  ...data,group,body,head,legs,ring,
-  x:Number(data.x)||0,z:Number(data.y)||0,
-  targetX:Number(data.x)||0,targetZ:Number(data.y)||0,
-  isNPC
- };
+ const a={...data,group,body,ring,isNPC,x:data.x||0,z:data.z||0,tx:data.x||0,tz:data.z||0,hp:100};
+ avatars.set(a.id,a);return a;
 }
-
-function updateAvatar(data,isNPC=false){
- let a=avatars.get(data.id);
- if(!a){
-  a=makeAvatar(data,isNPC);
-  avatars.set(data.id,a);
- }
- a.name=data.name||a.name;
- a.targetX=(Number(data.x)||0)/8;
- a.targetZ=(Number(data.y)||0)/8;
- a.hp=data.hp;
- a.color=data.color;
- a.group.position.set(a.x,0,a.z);
- if(data.color)a.body.material.color.set(data.color);
- return a;
-}
-
-function syncData(players,npcs){
- const seen=new Set();
- for(const p of players||[]){
-  seen.add(p.id);
-  updateAvatar(p,false);
- }
- for(const n of npcs||[]){
-  seen.add(n.id);
-  updateAvatar(n,true);
- }
- for(const [key,a] of avatars){
-  if(!seen.has(key)){
-   scene.remove(a.group);
-   a.group.traverse(o=>{
-    if(o.geometry)o.geometry.dispose();
-    if(o.material){
-     if(o.material.map)o.material.map.dispose();
-     o.material.dispose();
-    }
-   });
-   avatars.delete(key);
-  }
- }
- renderPeople();
-}
-
-function me(){return avatars.get(myId)}
-function chosen(){return avatars.get(selectedId)}
-
-function choose(id,kind){
- selectedId=id;
- selectedKind=kind;
- const a=avatars.get(id);
- if(a)selectedText.textContent=a.name+(kind==="npc"?" · NPC":" · игрок");
- for(const [key,v] of avatars)v.ring.visible=key===id;
- renderPeople();
-}
-
-function renderPeople(){
- people.replaceChildren();
- for(const [key,a] of avatars){
-  const d=document.createElement("div");
-  d.className="person"+(key===selectedId?" sel":"");
-  d.textContent=(a.isNPC?"🤖 ":"👤 ")+a.name+(a.hp!=null?" · "+a.hp+" HP":"");
-  d.onclick=()=>choose(key,a.isNPC?"npc":"player");
-  people.append(d);
- }
-}
+const me=avatar({id:myId,name:myName,color:0x7dd3fc,x:0,z:0});
+npcDefs.forEach(n=>avatar(n,true));
 
 function say(name,text){
- const d=document.createElement("div");
- d.className="msg";
- const b=document.createElement("b");
- b.textContent=name+": ";
- d.append(b,document.createTextNode(String(text)));
- chat.append(d);
+ const d=document.createElement("div");d.className="msg";
+ const b=document.createElement("b");b.textContent=name+": ";
+ d.append(b,document.createTextNode(String(text)));chat.append(d);
  while(chat.children.length>70)chat.firstChild.remove();
  chat.scrollTop=chat.scrollHeight;
 }
-
-function send(data){
- if(socket&&socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data));
+function renderPeople(){
+ people.replaceChildren();
+ for(const a of avatars.values()){
+  const d=document.createElement("div");
+  d.className="person"+(a.id===selectedId?" sel":"");
+  d.textContent=(a.isNPC?"🤖 ":"👤 ")+a.name;
+  d.onclick=()=>select(a.id);people.append(d);
+ }
 }
+function select(id){
+ selectedId=id;
+ for(const a of avatars.values())a.ring.visible=a.id===id;
+ const a=avatars.get(id);
+ $("#selected").textContent=a?a.name+(a.isNPC?" · локальный ИИ":" · игрок"):"";
+ renderPeople();
+}
+select(selectedId);
 
-function connect(){
- const protocol=location.protocol==="https:"?"wss:":"ws:";
- socket=new WebSocket(protocol+"//"+location.host);
- socket.onopen=()=>status.textContent="● Онлайн";
- socket.onclose=()=>{status.textContent="Переподключение...";setTimeout(connect,2500)};
- socket.onerror=()=>status.textContent="Ошибка соединения";
- socket.onmessage=e=>{
-  let m;
-  try{m=JSON.parse(e.data)}catch{return}
-  if(m.type==="welcome"){
-   myId=m.id;
-   document.querySelector("#myname").value=m.self?.name||"";
-   syncData(m.players,m.npcs);
-   say("Система","Добро пожаловать в AI WORLD 3D!");
-  }
-  if(m.type==="snapshot")syncData(m.players,m.npcs);
-  if(m.type==="player-joined"){
-   updateAvatar(m.player,false);renderPeople();
-  }
-  if(m.type==="player-left"){
-   const a=avatars.get(m.id);
-   if(a){scene.remove(a.group);avatars.delete(m.id)}
-   renderPeople();
-  }
-  if(m.type==="player-moved"){
-   const a=avatars.get(m.id);
-   if(a){a.targetX=m.x/8;a.targetZ=m.y/8}
-  }
-  if(m.type==="player-updated"){
-   updateAvatar(m.player,false);
-   renderPeople();
-  }
-  if(m.type==="npc-update")syncData([...avatars.values()].filter(a=>!a.isNPC),m.npcs);
-  if(m.type==="chat")say(m.from,m.text);
-  if(m.type==="notice")say("Система",m.text);
-  if(m.type==="grab-state")say("Система","Изменилось состояние захвата персонажа.");
+async function loadAI(){
+ if(ai)return ai;
+ if(aiLoading)return aiLoading;
+ $("#loadAI").textContent="⏳ Загружаю модель...";
+ status.textContent="Загрузка ИИ...";
+ aiLoading=(async()=>{
+  const {pipeline,env}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
+  env.allowLocalModels=false;env.useBrowserCache=true;
+  ai=await pipeline("text-generation","HuggingFaceTB/SmolLM2-135M-Instruct",{dtype:"q4"});
+  status.textContent="ИИ готов";
+  $("#loadAI").textContent="🧠 ИИ загружен";
+  return ai;
+ })();
+ try{return await aiLoading}
+ catch(e){
+  aiLoading=null;$("#loadAI").textContent="↻ Повторить загрузку ИИ";
+  status.textContent="ИИ не загрузился";
+  throw e;
+ }
+}
+$("#loadAI").onclick=async()=>{
+ try{await loadAI();say("Система","Локальная модель загружена в браузер.");}
+ catch(e){say("Система","Не удалось загрузить модель. Проверь интернет и память устройства.");}
+};
+function instantReply(name,text){
+ const s=text.toLowerCase();
+ const replies={
+ "Мира":[[/привет|здравствуй|хай/,"Привет! 😊 Как у тебя дела?"],[/как дела|как ты/,"У меня всё хорошо! А у тебя?"],[/кто ты|как тебя зовут/,"Я Мира! Рада знакомству."],[/пока/,"Пока! Ещё увидимся 🌼"]],
+ "Роб":[[/привет|здравствуй|хай/,"Привет. Что будем исследовать?"],[/как дела|как ты/,"Всё отлично. Готов к приключениям."],[/кто ты|как тебя зовут/,"Я Роб. Люблю сначала подумать."],[/пока/,"До встречи!"]],
+ "Кекс":[[/привет|здравствуй|хай/,"ОПА, привет! 😎"],[/как дела|как ты/,"Кекс на месте! Настроение максимальное!"],[/кто ты|как тебя зовут/,"Я Кекс — главный специалист по веселью!"],[/пока/,"Не скучай!"]],
+ "Луна":[[/привет|здравствуй|хай/,"Привет 🌙 Хорошо, что ты пришёл."],[/как дела|как ты/,"Всё спокойно. А что нового?"],[/кто ты|как тебя зовут/,"Я Луна. Мне нравится исследовать мир."],[/пока/,"До скорой встречи."]]
  };
+ for(const [re,answer] of replies[name]||[])if(re.test(s))return answer;
+ return null;
 }
-connect();
-
-function moveCharacter(){
- const a=me();
- if(!a)return;
-
- let forward=0,side=0;
- if(keys.w||keys.arrowup)forward++;
- if(keys.s||keys.arrowdown)forward--;
- if(keys.a||keys.arrowleft)side--;
- if(keys.d||keys.arrowright)side++;
-
- if(!forward&&!side)return;
-
- const speed=.14;
- const dx=(side*Math.cos(cameraYaw)-forward*Math.sin(cameraYaw))*speed;
- const dz=(side*Math.sin(cameraYaw)+forward*Math.cos(cameraYaw))*speed;
-
- a.x=Math.max(-55,Math.min(55,a.x+dx));
- a.z=Math.max(-55,Math.min(55,a.z+dz));
- a.group.position.set(a.x,0,a.z);
- a.group.rotation.y=cameraYaw;
- send({type:"move",x:a.x*8,y:a.z*8});
+async function talk(name,text){
+ const npc=Array.from(avatars.values()).find(a=>a.name===name);
+ const fast=instantReply(name,text);
+ const hist=memory.get(name)||[];
+ if(fast){
+  hist.push({role:"user",content:text},{role:"assistant",content:fast});
+  memory.set(name,hist.slice(-8));return fast;
+ }
+ try{
+  const model=await loadAI();
+  const prompt=[
+   `<|im_start|>system\n${profiles[name]} Отвечай на русском, естественно и коротко. Ты персонаж игры, а не ИИ-помощник.<|im_end|>`,
+   ...hist.map(m=>`<|im_start|>${m.role}\n${m.content}<|im_end|>`),
+   `<|im_start|>user\n${text}<|im_end|>`,
+   "<|im_start|>assistant\n"
+  ].join("\n");
+  const result=await model(prompt,{max_new_tokens:64,do_sample:true,temperature:.7,top_p:.9,return_full_text:false});
+  const answer=String(result?.[0]?.generated_text||"").replace(/<\|[^>]*\|>/g,"").trim().split("\n")[0].slice(0,300);
+  const finalAnswer=answer||"Хм, можешь спросить немного иначе?";
+  hist.push({role:"user",content:text},{role:"assistant",content:finalAnswer});
+  memory.set(name,hist.slice(-8));return finalAnswer;
+ }catch(e){
+  return "Я пока не смог загрузить нейросеть. Попробуй ещё раз.";
+ }
 }
 
+$("#chatform").onsubmit=async e=>{
+ e.preventDefault();
+ const input=$("#message"),text=input.value.trim();if(!text)return;
+ input.value="";
+ const target=avatars.get(selectedId);
+ if(!target?.isNPC){say("Система","Выбери Миру, Роба, Кекса или Луну.");return;}
+ say(myName,text);
+ const pending=document.createElement("div");pending.className="msg";pending.textContent=target.name+": печатает…";chat.append(pending);
+ const reply=await talk(target.name,text);
+ pending.remove();say(target.name,reply);
+};
+$("#rename").onclick=()=>{
+ const name=$("#myname").value.trim();
+ if(!name)return;
+ myName=name;me.name=name;
+ say("Система","Твоё имя теперь "+name+".");
+};
+function action(label){
+ const target=avatars.get(selectedId);
+ if(!target||!target.isNPC){say("Система","Выбери NPC.");return;}
+ if(Math.hypot(target.x-me.x,target.z-me.z)>8){say("Система","Подойди поближе.");return;}
+ if(label==="heal"){target.hp=Math.min(100,target.hp+25);say("Система","Ты помог "+target.name+".");}
+ if(label==="hit"){target.tx+=Math.random()*2-1;target.tz+=Math.random()*2-1;say("Система","Ты толкнул "+target.name+".");}
+ if(label==="grab"){target.tx=me.x+1;target.tz=me.z+1;say("Система","Ты схватил "+target.name+".");}
+ if(label==="release")say("Система","Ты отпустил "+target.name+".");
+}
+$("#heal").onclick=()=>action("heal");
+$("#hit").onclick=()=>action("hit");
+$("#grab").onclick=()=>action("grab");
+$("#release").onclick=()=>action("release");
+
+const dirMap={up:"arrowup",down:"arrowdown",left:"arrowleft",right:"arrowright"};
 window.addEventListener("keydown",e=>{
  if(e.target.matches("input"))return;
- const k=e.key.toLowerCase();
- keys[k]=true;
+ const k=e.key.toLowerCase();keys[k]=true;
  if(k.startsWith("arrow")||["w","a","s","d"].includes(k))e.preventDefault();
 });
 window.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 window.addEventListener("blur",()=>Object.keys(keys).forEach(k=>keys[k]=false));
-
-const dirMap={up:"arrowup",down:"arrowdown",left:"arrowleft",right:"arrowright"};
 document.querySelectorAll("[data-dir]").forEach(b=>{
  const k=dirMap[b.dataset.dir];
- b.addEventListener("pointerdown",e=>{e.preventDefault();keys[k]=true});
+ b.onpointerdown=e=>{e.preventDefault();keys[k]=true;};
  ["pointerup","pointercancel","pointerleave"].forEach(ev=>b.addEventListener(ev,()=>keys[k]=false));
 });
-
-const look=document.querySelector("#look");
-look.addEventListener("pointerdown",e=>{
- draggingLook=true;touchX=e.clientX;touchY=e.clientY;
- look.setPointerCapture(e.pointerId);
-});
-look.addEventListener("pointermove",e=>{
- if(!draggingLook)return;
- cameraYaw-=(e.clientX-touchX)*.009;
- cameraPitch=Math.max(-.15,Math.min(.8,cameraPitch+(e.clientY-touchY)*.004));
- touchX=e.clientX;touchY=e.clientY;
-});
-look.addEventListener("pointerup",()=>draggingLook=false);
-look.addEventListener("pointercancel",()=>draggingLook=false);
-
-canvas.addEventListener("pointerdown",e=>{
- const rect=canvas.getBoundingClientRect();
- const mouse=new THREE.Vector2(
-  (e.clientX-rect.left)/rect.width*2-1,
-  -((e.clientY-rect.top)/rect.height)*2+1
- );
- const ray=new THREE.Raycaster();
- ray.setFromCamera(mouse,camera);
- const objects=[];
- for(const [key,a] of avatars){
-  a.group.traverse(o=>{if(o.isMesh){o.userData.avatarId=key;objects.push(o)}});
- }
- const hit=ray.intersectObjects(objects);
- if(hit.length){
-  const id=hit[0].object.userData.avatarId;
-  choose(id,avatars.get(id)?.isNPC?"npc":"player");
- }
-});
-
-document.querySelector("#rename").onclick=()=>{
- const name=document.querySelector("#myname").value.trim();
- if(name)send({type:"rename",name});
+const look=$("#look");
+look.onpointerdown=e=>{lookOn=true;lastX=e.clientX;lastY=e.clientY;look.setPointerCapture(e.pointerId);};
+look.onpointermove=e=>{
+ if(!lookOn)return;
+ yaw-=(e.clientX-lastX)*.009;
+ pitch=Math.max(-.15,Math.min(.8,pitch+(e.clientY-lastY)*.004));
+ lastX=e.clientX;lastY=e.clientY;
 };
-
-document.querySelector("#chatform").onsubmit=e=>{
- e.preventDefault();
- const input=document.querySelector("#message");
- const text=input.value.trim();
- if(text)send({type:"chat",text});
- input.value="";
-};
-
-function action(name){
- if(!selectedId||selectedId===myId){
-  say("Система","Выбери другого персонажа.");
-  return;
- }
- send({type:"action",action:name,targetId:selectedId});
-}
-document.querySelector("#heal").onclick=()=>action("heal");
-document.querySelector("#hit").onclick=()=>action("hit");
-document.querySelector("#grab").onclick=()=>action("grab");
-document.querySelector("#release").onclick=()=>action("release");
+look.onpointerup=()=>lookOn=false;look.onpointercancel=()=>lookOn=false;
 
 function resize(){
- const r=canvas.getBoundingClientRect();
- if(!r.width||!r.height)return;
+ const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;
  renderer.setSize(r.width,r.height,false);
- camera.aspect=r.width/r.height;
- camera.updateProjectionMatrix();
+ camera.aspect=r.width/r.height;camera.updateProjectionMatrix();
 }
-new ResizeObserver(resize).observe(canvas);
-resize();
+new ResizeObserver(resize).observe(canvas);resize();
 
 const clock=new THREE.Clock();
 function animate(){
  requestAnimationFrame(animate);
  const dt=Math.min(clock.getDelta(),.05);
- moveCharacter();
-
+ let f=0,s=0;
+ if(keys.w||keys.arrowup)f++;
+ if(keys.s||keys.arrowdown)f--;
+ if(keys.a||keys.arrowleft)s--;
+ if(keys.d||keys.arrowright)s++;
+ if(f||s){
+  const len=Math.hypot(f,s)||1;f/=len;s/=len;
+  const speed=6*dt;
+  me.x+=(-s*Math.cos(yaw)-f*Math.sin(yaw))*speed;
+  me.z+=(s*Math.sin(yaw)-f*Math.cos(yaw))*speed;
+  me.x=THREE.MathUtils.clamp(me.x,-55,55);
+  me.z=THREE.MathUtils.clamp(me.z,-55,55);
+  me.group.rotation.y=yaw;
+ }
  for(const a of avatars.values()){
-  if(a.id!==myId){
-   a.x=THREE.MathUtils.damp(a.x,a.targetX,5,dt);
-   a.z=THREE.MathUtils.damp(a.z,a.targetZ,5,dt);
-   a.group.position.set(a.x,0,a.z);
+  if(a.isNPC){
+   if(Math.random()<.004){a.tx=THREE.MathUtils.clamp(a.x+(Math.random()-.5)*10,-45,45);a.tz=THREE.MathUtils.clamp(a.z+(Math.random()-.5)*10,-45,45);}
+   a.x=THREE.MathUtils.damp(a.x,a.tx,1.3,dt);
+   a.z=THREE.MathUtils.damp(a.z,a.tz,1.3,dt);
   }
+  a.group.position.set(a.x,0,a.z);
  }
-
- const p=me();
- if(p){
-  const target=new THREE.Vector3(p.x,1.3,p.z);
-  const distance=7;
-  camera.position.set(
-   target.x+Math.sin(cameraYaw)*distance*Math.cos(cameraPitch),
-   target.y+3+Math.sin(cameraPitch)*distance,
-   target.z+Math.cos(cameraYaw)*distance*Math.cos(cameraPitch)
-  );
-  camera.lookAt(target);
- }
-
+ const target=new THREE.Vector3(me.x,1.3,me.z),distance=7;
+ camera.position.set(
+  target.x+Math.sin(yaw)*distance*Math.cos(pitch),
+  target.y+3+Math.sin(pitch)*distance,
+  target.z+Math.cos(yaw)*distance*Math.cos(pitch)
+ );
+ camera.lookAt(target);
  renderer.render(scene,camera);
 }
 animate();
+status.textContent="3D мир готов";
+say("Система","Добро пожаловать! Выбери NPC и напиши ему. Быстрые ответы работают сразу, нейросеть подключается по необходимости.");
 </script>
 </body>
 </html>
