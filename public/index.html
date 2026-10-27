@@ -27,9 +27,24 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
 #chat,#globalChat{height:160px;overflow:auto;background:#0b1324;padding:8px;border-radius:8px;font-size:13px;overflow-wrap:anywhere}
 .msg{margin-bottom:6px;white-space:pre-wrap}
 .small{font-size:12px;color:#9eacc8;line-height:1.5}
-.controls{position:absolute;left:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,44px);gap:4px;z-index:5}
-.controls button{height:42px;padding:0;font-size:20px;touch-action:none}
-#look{position:absolute;right:14px;bottom:24px;width:95px;height:95px;border:1px solid #9ab8df88;border-radius:50%;z-index:4;touch-action:none}
+
+/* Исправленное мобильное управление */
+.controls{
+ position:absolute;left:12px;bottom:12px;
+ display:grid;grid-template-columns:repeat(3,44px);
+ gap:4px;z-index:5;
+ user-select:none;-webkit-user-select:none;
+ touch-action:none;
+}
+.controls button{
+ height:42px;padding:0;font-size:20px;
+ touch-action:none;user-select:none;
+ -webkit-user-select:none;-webkit-touch-callout:none;
+ -webkit-tap-highlight-color:transparent;
+}
+.controls button:focus{outline:none}
+.controls button:active{background:#263b5b}
+#look{position:absolute;right:14px;bottom:24px;width:95px;height:95px;border:1px solid #9ab8df88;border-radius:50%;z-index:4;touch-action:none;user-select:none;-webkit-user-select:none}
 #globalChatForm input{min-width:0;flex:1}
 #networkStatus{margin:8px 0 0}
 @media(max-width:760px){main{grid-template-columns:1fr;padding:6px}.side{display:grid;grid-template-columns:1fr 1fr}.chatpanel{grid-column:1/-1}}
@@ -51,14 +66,14 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
   <div style="position:relative">
     <canvas id="game"></canvas>
     <div class="controls">
-      <span></span><button data-dir="up">▲</button><span></span>
-      <button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button>
+      <span></span><button type="button" data-dir="up">▲</button><span></span>
+      <button type="button" data-dir="left">◀</button><button type="button" data-dir="down">▼</button><button type="button" data-dir="right">▶</button>
     </div>
     <div id="look"></div>
   </div>
   <div class="row">
     <input id="myname" maxlength="18" placeholder="Твоё имя">
-    <button id="rename">Сменить</button>
+    <button id="rename" type="button">Сменить</button>
   </div>
   <p class="small">WASD — движение. Поворачивай камеру пальцем справа. Выбери NPC, чтобы общаться с ним через облачный ИИ.</p>
 </section>
@@ -69,10 +84,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
     <div id="people"></div>
     <div id="selected" class="small">Выбери персонажа</div>
     <div class="actions">
-      <button id="heal">💚 Помочь</button>
-      <button id="hit">👊 Толкнуть</button>
-      <button id="grab">✊ Схватить</button>
-      <button id="release">↗ Отпустить</button>
+      <button id="heal" type="button">💚 Помочь</button>
+      <button id="hit" type="button">👊 Толкнуть</button>
+      <button id="grab" type="button">✊ Схватить</button>
+      <button id="release" type="button">↗ Отпустить</button>
     </div>
   </section>
 
@@ -424,7 +439,6 @@ function select(id){
 
 select(selectedId);
 
-/* Быстрые ответы на простые приветствия */
 function instantReply(name,text){
   const s=text.toLowerCase();
 
@@ -462,8 +476,6 @@ function instantReply(name,text){
   return null;
 }
 
-/* Облачный ИИ вызывается на сервере.
-   Локальная нейросеть в браузере не скачивается. */
 async function talk(name,text){
   const fast=instantReply(name,text);
   const hist=memory.get(name)||[];
@@ -537,6 +549,7 @@ $("#chatform").onsubmit=async e=>{
   const reply=await talk(target.name,text);
   pending.remove();
   say(target.name,reply);
+  showSpeechBubble(target,reply);
 };
 
 $("#rename").onclick=()=>{
@@ -799,7 +812,7 @@ const dirMap={
 };
 
 window.addEventListener("keydown",e=>{
-  if(e.target.matches("input"))return;
+  if(e.target.matches("input,textarea"))return;
   const k=e.key.toLowerCase();
   keys[k]=true;
 
@@ -816,26 +829,45 @@ window.addEventListener("blur",()=>{
   Object.keys(keys).forEach(k=>keys[k]=false);
 });
 
+/* Исправлено: удержание кнопок через Pointer Events.
+   Захват указателя не даёт движению случайно обрываться. */
 document.querySelectorAll("[data-dir]").forEach(b=>{
   const k=dirMap[b.dataset.dir];
 
-  b.onpointerdown=e=>{
+  b.addEventListener("contextmenu",e=>e.preventDefault());
+  b.addEventListener("selectstart",e=>e.preventDefault());
+  b.addEventListener("dragstart",e=>e.preventDefault());
+
+  b.addEventListener("pointerdown",e=>{
     e.preventDefault();
     keys[k]=true;
+    try{b.setPointerCapture(e.pointerId)}catch{}
+  });
+
+  const stopMoving=e=>{
+    keys[k]=false;
+    if(e.pointerId!==undefined){
+      try{
+        if(b.hasPointerCapture(e.pointerId)){
+          b.releasePointerCapture(e.pointerId);
+        }
+      }catch{}
+    }
   };
 
-  ["pointerup","pointercancel","pointerleave"].forEach(ev=>{
-    b.addEventListener(ev,()=>keys[k]=false);
-  });
+  b.addEventListener("pointerup",stopMoving);
+  b.addEventListener("pointercancel",stopMoving);
+  b.addEventListener("lostpointercapture",()=>{keys[k]=false});
 });
 
 const look=$("#look");
 
 look.onpointerdown=e=>{
+  e.preventDefault();
   lookOn=true;
   lastX=e.clientX;
   lastY=e.clientY;
-  look.setPointerCapture(e.pointerId);
+  try{look.setPointerCapture(e.pointerId)}catch{}
 };
 
 look.onpointermove=e=>{
@@ -850,6 +882,7 @@ look.onpointermove=e=>{
 
 look.onpointerup=()=>lookOn=false;
 look.onpointercancel=()=>lookOn=false;
+look.addEventListener("lostpointercapture",()=>lookOn=false);
 
 function resize(){
   const r=canvas.getBoundingClientRect();
@@ -884,8 +917,10 @@ function animate(){
 
     const speed=6*dt;
 
-    me.x+=(-s*Math.cos(yaw)-f*Math.sin(yaw))*speed;
-    me.z+=(s*Math.sin(yaw)-f*Math.cos(yaw))*speed;
+    /* Исправлено направление: влево действительно влево,
+       вправо действительно вправо, относительно камеры. */
+    me.x+=(s*Math.cos(yaw)-f*Math.sin(yaw))*speed;
+    me.z+=(-s*Math.sin(yaw)-f*Math.cos(yaw))*speed;
 
     me.x=THREE.MathUtils.clamp(me.x,-55,55);
     me.z=THREE.MathUtils.clamp(me.z,-55,55);
