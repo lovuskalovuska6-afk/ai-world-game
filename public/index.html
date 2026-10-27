@@ -8,15 +8,18 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#0b1020;color:#eef4ff;font:15px Arial,sans-serif}
-header{padding:12px;background:#141d32;display:flex;justify-content:space-between;gap:8px;align-items:center}
+header{padding:12px;background:#141d32;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
 h1{font-size:20px;margin:0;color:#7dd3fc}
-main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10px}
 .panel{background:#151e32;border:1px solid #33415e;border-radius:12px;padding:10px;min-width:0}
 #game{width:100%;height:65vh;min-height:350px;display:block;touch-action:none;border-radius:8px}
 button,input{font:inherit;padding:9px;border:1px solid #3c4b69;border-radius:8px;background:#0b1324;color:white}
 button{cursor:pointer}
+button:hover{filter:brightness(1.15)}
+#miniGames{background:#4338ca;border-color:#818cf8;white-space:nowrap}
+#miniGames:hover{background:#5145e5}
 .row{display:flex;gap:5px;margin-top:8px}
 .row input{min-width:0;flex:1}
+main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10px}
 .side{display:flex;flex-direction:column;gap:10px}
 #people{max-height:140px;overflow:auto}
 .person{padding:8px;margin:4px 0;background:#0b1324;border-radius:6px;cursor:pointer}
@@ -57,7 +60,10 @@ button{cursor:pointer}
 
 <header>
   <h1>🌐 AI WORLD 3D</h1>
-  <div id="status">Запуск...</div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div id="status">Запуск...</div>
+    <button id="miniGames" type="button">🎮 Мини-игры</button>
+  </div>
 </header>
 
 <main>
@@ -125,6 +131,11 @@ const modelStatus=$("#modelStatus");
 const modelRetry=$("#modelRetry");
 const globalChat=$("#globalChat");
 const networkStatus=$("#networkStatus");
+
+// Кнопка перехода в мини-игры
+$("#miniGames").addEventListener("click",()=>{
+  window.open("https://ai-world-minigames.onrender.com/","_blank");
+});
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color("#9ac7ed");
@@ -401,10 +412,7 @@ async function loadAI(){
           const file=info.file||info.name||"Файл модели";
 
           if(typeof info.progress==="number"){
-            updateModelProgress(
-              info.progress,
-              "Загрузка: "+file
-            );
+            updateModelProgress(info.progress,"Загрузка: "+file);
           }else if(
             typeof info.loaded==="number"&&
             typeof info.total==="number"&&
@@ -674,7 +682,6 @@ function connectMultiplayer(){
       networkStatus.textContent="🟢 Онлайн · игроков: "+count;
       addGlobalMessage("Система","Ты подключился к общему чату AI WORLD.");
 
-      // Отображаем уже подключённых игроков в списке.
       (data.players||[]).forEach(p=>{
         if(p.id===myId)return;
         addRemotePlayer(p);
