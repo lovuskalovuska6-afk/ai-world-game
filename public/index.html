@@ -16,7 +16,6 @@ button,input{font:inherit;padding:9px;border:1px solid #3c4b69;border-radius:8px
 button{cursor:pointer}
 button:hover{filter:brightness(1.15)}
 #miniGames{background:#4338ca;border-color:#818cf8;white-space:nowrap}
-#miniGames:hover{background:#5145e5}
 .row{display:flex;gap:5px;margin-top:8px}
 .row input{min-width:0;flex:1}
 main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10px}
@@ -132,7 +131,6 @@ const modelRetry=$("#modelRetry");
 const globalChat=$("#globalChat");
 const networkStatus=$("#networkStatus");
 
-// Кнопка перехода в мини-игры
 $("#miniGames").addEventListener("click",()=>{
   window.open("https://ai-world-minigames.onrender.com/","_blank");
 });
@@ -229,7 +227,6 @@ let yaw=0,pitch=.2,ai=null,aiLoading=null;
 const keys={};
 let lookOn=false,lastX=0,lastY=0;
 let socket=null;
-let socketReady=false;
 
 function avatar(data,isNPC=false){
   const group=new THREE.Group();
@@ -237,9 +234,7 @@ function avatar(data,isNPC=false){
     color:data.color||0x7dd3fc
   });
 
-  const body=new THREE.Mesh(
-    new THREE.BoxGeometry(.8,1,.42),color
-  );
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.8,1,.42),color);
   body.position.y=1.15;
   group.add(body);
 
@@ -252,9 +247,7 @@ function avatar(data,isNPC=false){
 
   const hair=new THREE.Mesh(
     new THREE.BoxGeometry(.61,.18,.61),
-    new THREE.MeshStandardMaterial({
-      color:isNPC?0x49342b:0x344258
-    })
+    new THREE.MeshStandardMaterial({color:isNPC?0x49342b:0x344258})
   );
   hair.position.y=2.28;
   group.add(hair);
@@ -288,6 +281,26 @@ function avatar(data,isNPC=false){
   label.position.y=2.85;
   group.add(label);
 
+  // Облачко для сообщения над персонажем
+  const bubbleCanvas=document.createElement("canvas");
+  bubbleCanvas.width=512;
+  bubbleCanvas.height=160;
+
+  const bubbleTexture=new THREE.CanvasTexture(bubbleCanvas);
+  const bubble=new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map:bubbleTexture,
+      transparent:true,
+      depthTest:false
+    })
+  );
+
+  bubble.scale.set(3.6,1.12,1);
+  bubble.position.y=3.75;
+  bubble.visible=false;
+  bubble.renderOrder=10;
+  group.add(bubble);
+
   const ring=new THREE.Mesh(
     new THREE.TorusGeometry(.72,.045,8,32),
     new THREE.MeshBasicMaterial({color:0xffffff})
@@ -299,10 +312,14 @@ function avatar(data,isNPC=false){
   scene.add(group);
 
   const a={
-    ...data,group,body,ring,isNPC,
+    ...data,
+    group,body,ring,isNPC,
     x:data.x||0,z:data.z||0,
     tx:data.x||0,tz:data.z||0,
-    hp:100,labelCanvas,texture
+    hp:100,
+    labelCanvas,texture,
+    bubbleCanvas,bubbleTexture,bubble,
+    bubbleTimer:null
   };
 
   avatars.set(a.id,a);
@@ -330,15 +347,83 @@ function say(name,text){
 function addGlobalMessage(name,text){
   const d=document.createElement("div");
   d.className="msg";
-
   const b=document.createElement("b");
   b.textContent=name+": ";
-
   d.append(b,document.createTextNode(String(text)));
   globalChat.append(d);
 
   while(globalChat.children.length>100)globalChat.firstChild.remove();
   globalChat.scrollTop=globalChat.scrollHeight;
+}
+
+/* Показывает сообщение над игроком ровно 5 секунд */
+function showSpeechBubble(player,message){
+  if(!player||!player.bubble)return;
+
+  const ctx=player.bubbleCanvas.getContext("2d");
+  const text=String(message).slice(0,180);
+
+  ctx.clearRect(0,0,512,160);
+
+  // Белое облачко
+  ctx.fillStyle="#ffffff";
+  ctx.strokeStyle="#263449";
+  ctx.lineWidth=5;
+
+  ctx.beginPath();
+  ctx.roundRect(12,8,488,125,24);
+  ctx.fill();
+  ctx.stroke();
+
+  // Хвостик
+  ctx.beginPath();
+  ctx.moveTo(220,130);
+  ctx.lineTo(250,155);
+  ctx.lineTo(275,130);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Разбиваем текст на строки
+  ctx.fillStyle="#111827";
+  ctx.font="bold 30px Arial";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+
+  const words=text.split(/\s+/);
+  const lines=[];
+  let line="";
+
+  for(const word of words){
+    const test=line?line+" "+word:word;
+
+    if(ctx.measureText(test).width>440&&line){
+      lines.push(line);
+      line=word;
+    }else{
+      line=test;
+    }
+  }
+
+  if(line)lines.push(line);
+
+  const visibleLines=lines.slice(0,3);
+  const lineHeight=34;
+  const startY=68-(visibleLines.length-1)*lineHeight/2;
+
+  visibleLines.forEach((part,i)=>{
+    ctx.fillText(part,256,startY+i*lineHeight);
+  });
+
+  player.bubbleTexture.needsUpdate=true;
+  player.bubble.visible=true;
+
+  if(player.bubbleTimer)clearTimeout(player.bubbleTimer);
+
+  player.bubbleTimer=setTimeout(()=>{
+    player.bubble.visible=false;
+    player.bubbleTimer=null;
+  },5000);
 }
 
 function renderPeople(){
@@ -370,13 +455,11 @@ function select(id){
 
 select(selectedId);
 
-/* Загрузка модели с отображением прогресса */
+/* Загрузка локальной модели */
 function updateModelProgress(percent,message){
   const value=Math.max(0,Math.min(100,Number(percent)||0));
-
   modelBar.style.width=value+"%";
   modelPercent.textContent=Math.round(value)+"%";
-
   if(message)modelStatus.textContent=message;
 }
 
@@ -386,9 +469,7 @@ async function loadAI(){
 
   modelLoading.style.display="flex";
   modelRetry.style.display="none";
-
   updateModelProgress(0,"Подключение к библиотеке ИИ...");
-
   $("#loadAI").textContent="⏳ Загружаю модель...";
   status.textContent="Загрузка ИИ...";
 
@@ -407,7 +488,6 @@ async function loadAI(){
       "HuggingFaceTB/SmolLM2-135M-Instruct",
       {
         dtype:"q4",
-
         progress_callback:(info)=>{
           const file=info.file||info.name||"Файл модели";
 
@@ -415,13 +495,9 @@ async function loadAI(){
             updateModelProgress(info.progress,"Загрузка: "+file);
           }else if(
             typeof info.loaded==="number"&&
-            typeof info.total==="number"&&
-            info.total>0
+            typeof info.total==="number"&&info.total>0
           ){
-            updateModelProgress(
-              info.loaded/info.total*100,
-              "Загрузка: "+file
-            );
+            updateModelProgress(info.loaded/info.total*100,"Загрузка: "+file);
           }else if(info.status==="done"){
             updateModelProgress(100,"Файл готов: "+file);
           }else if(info.status==="initiate"){
@@ -439,10 +515,7 @@ async function loadAI(){
     status.textContent="ИИ готов";
     $("#loadAI").textContent="🧠 ИИ загружен";
 
-    setTimeout(()=>{
-      modelLoading.style.display="none";
-    },800);
-
+    setTimeout(()=>modelLoading.style.display="none",800);
     return ai;
   })();
 
@@ -450,7 +523,6 @@ async function loadAI(){
     return await aiLoading;
   }catch(e){
     console.error("Ошибка загрузки модели:",e);
-
     ai=null;
     aiLoading=null;
 
@@ -462,7 +534,6 @@ async function loadAI(){
     modelRetry.style.display="block";
     $("#loadAI").textContent="↻ Повторить загрузку";
     status.textContent="Ошибка загрузки ИИ";
-
     throw e;
   }
 }
@@ -578,7 +649,6 @@ $("#chatform").onsubmit=async e=>{
 
   const input=$("#message");
   const text=input.value.trim();
-
   if(!text)return;
   input.value="";
 
@@ -597,12 +667,10 @@ $("#chatform").onsubmit=async e=>{
   chat.append(pending);
 
   const reply=await talk(target.name,text);
-
   pending.remove();
   say(target.name,reply);
 };
 
-/* Имя игрока и общий сетевой чат */
 $("#rename").onclick=()=>{
   const name=$("#myname").value.trim();
   if(!name)return;
@@ -652,13 +720,11 @@ function connectMultiplayer(){
   socket=new WebSocket(protocol+"//"+location.host);
 
   socket.onopen=()=>{
-    socketReady=true;
     networkStatus.textContent="🟢 Подключено к серверу";
     socket.send(JSON.stringify({type:"rename",name:myName}));
   };
 
   socket.onclose=()=>{
-    socketReady=false;
     networkStatus.textContent="🔴 Соединение потеряно. Перезагрузи страницу.";
   };
 
@@ -672,14 +738,18 @@ function connectMultiplayer(){
 
     if(data.type==="welcome"){
       myId=data.id;
+
+      // Обновляем ID локального персонажа и ключ в Map
+      avatars.delete("local-player");
       me.id=myId;
+      avatars.set(myId,me);
 
       if(data.self){
         me.name=data.self.name||myName;
       }
 
-      const count=(data.players||[]).length;
-      networkStatus.textContent="🟢 Онлайн · игроков: "+count;
+      networkStatus.textContent="🟢 Онлайн · игроков: "+(data.players||[]).length;
+
       addGlobalMessage("Система","Ты подключился к общему чату AI WORLD.");
 
       (data.players||[]).forEach(p=>{
@@ -706,6 +776,7 @@ function connectMultiplayer(){
 
     if(data.type==="player-moved"){
       const a=avatars.get(data.id);
+
       if(a&&!a.isNPC){
         const p=serverToWorld(data.x,data.y);
         a.tx=p.x;
@@ -714,7 +785,13 @@ function connectMultiplayer(){
     }
 
     if(data.type==="chat"){
-      addGlobalMessage(data.from||"Игрок",data.text||"");
+      const name=data.from||"Игрок";
+      const text=data.text||"";
+
+      addGlobalMessage(name,text);
+
+      const speaker=avatars.get(data.fromId);
+      if(speaker)showSpeechBubble(speaker,text);
     }
 
     if(data.type==="notice"){
@@ -751,12 +828,14 @@ function addRemotePlayer(p){
       x:pos.x,
       z:pos.z
     },false);
+
     a.isRemote=true;
   }
 
   a.name=p.name||a.name;
   a.tx=pos.x;
   a.tz=pos.z;
+
   updateAvatarLabel(a,a.name);
   renderPeople();
 }
@@ -772,6 +851,7 @@ function updateRemotePlayer(p){
   }
 
   a.name=p.name||a.name;
+
   if(typeof p.x==="number"&&typeof p.y==="number"){
     const pos=serverToWorld(p.x,p.y);
     a.tx=pos.x;
@@ -786,8 +866,16 @@ function removeRemotePlayer(id){
   const a=avatars.get(id);
   if(!a||!a.isRemote)return;
 
-  scene.remove(a.group);
+  // Останавливаем таймер и освобождаем текстуру облачка
+  if(a.bubbleTimer){
+    clearTimeout(a.bubbleTimer);
+    a.bubbleTimer=null;
+  }
+
+  a.bubbleTexture.dispose();
   a.texture.dispose();
+
+  scene.remove(a.group);
   avatars.delete(id);
 
   if(selectedId===id){
@@ -800,7 +888,6 @@ function removeRemotePlayer(id){
 
 connectMultiplayer();
 
-/* Действия с NPC */
 function action(label){
   const target=avatars.get(selectedId);
 
@@ -890,10 +977,7 @@ look.onpointermove=e=>{
   if(!lookOn)return;
 
   yaw-=(e.clientX-lastX)*.009;
-  pitch=Math.max(
-    -.15,
-    Math.min(.8,pitch+(e.clientY-lastY)*.004)
-  );
+  pitch=Math.max(-.15,Math.min(.8,pitch+(e.clientY-lastY)*.004));
 
   lastX=e.clientX;
   lastY=e.clientY;
@@ -946,11 +1030,13 @@ function animate(){
 
     if(socket?.readyState===WebSocket.OPEN&&now-lastMoveSend>70){
       const p=worldToServer(me.x,me.z);
+
       socket.send(JSON.stringify({
         type:"move",
         x:p.x,
         y:p.y
       }));
+
       lastMoveSend=now;
     }
   }
@@ -958,12 +1044,8 @@ function animate(){
   for(const a of avatars.values()){
     if(a.isNPC){
       if(Math.random()<.004){
-        a.tx=THREE.MathUtils.clamp(
-          a.x+(Math.random()-.5)*10,-45,45
-        );
-        a.tz=THREE.MathUtils.clamp(
-          a.z+(Math.random()-.5)*10,-45,45
-        );
+        a.tx=THREE.MathUtils.clamp(a.x+(Math.random()-.5)*10,-45,45);
+        a.tz=THREE.MathUtils.clamp(a.z+(Math.random()-.5)*10,-45,45);
       }
 
       a.x=THREE.MathUtils.damp(a.x,a.tx,1.3,dt);
