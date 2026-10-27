@@ -30,14 +30,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
 .controls{position:absolute;left:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,44px);gap:4px;z-index:5}
 .controls button{height:42px;padding:0;font-size:20px;touch-action:none}
 #look{position:absolute;right:14px;bottom:24px;width:95px;height:95px;border:1px solid #9ab8df88;border-radius:50%;z-index:4;touch-action:none}
-#modelLoading{display:none;position:fixed;inset:0;z-index:9999;background:#07101fee;align-items:center;justify-content:center;padding:20px}
-#modelCard{width:100%;max-width:430px;padding:22px;border:1px solid #526789;border-radius:16px;background:#151e32;box-shadow:0 20px 70px #0009}
-#modelCard h2{margin:0 0 12px;font-size:21px}
-#modelStatus{font-size:13px;color:#cbd5e1;overflow-wrap:anywhere;line-height:1.5;min-height:38px}
-#modelTrack{height:14px;margin:17px 0 9px;background:#080d1b;border:1px solid #3c4b69;border-radius:20px;overflow:hidden}
-#modelBar{height:100%;width:0%;background:linear-gradient(90deg,#38bdf8,#818cf8);transition:width .2s}
-#modelPercent{font-size:22px;font-weight:bold;color:#7dd3fc}
-#modelRetry{display:none;width:100%;margin-top:12px}
 #globalChatForm input{min-width:0;flex:1}
 #networkStatus{margin:8px 0 0}
 @media(max-width:760px){main{grid-template-columns:1fr;padding:6px}.side{display:grid;grid-template-columns:1fr 1fr}.chatpanel{grid-column:1/-1}}
@@ -45,17 +37,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
 </style>
 </head>
 <body>
-
-<div id="modelLoading" role="dialog" aria-modal="true" aria-label="Загрузка модели ИИ">
-  <div id="modelCard">
-    <h2>🧠 Загрузка модели ИИ</h2>
-    <div id="modelStatus">Подготовка...</div>
-    <div id="modelTrack"><div id="modelBar"></div></div>
-    <div id="modelPercent">0%</div>
-    <p class="small">При первом запуске модель скачивается в браузер. Не закрывай страницу во время загрузки.</p>
-    <button id="modelRetry">Повторить загрузку</button>
-  </div>
-</div>
 
 <header>
   <h1>🌐 AI WORLD 3D</h1>
@@ -79,7 +60,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
     <input id="myname" maxlength="18" placeholder="Твоё имя">
     <button id="rename">Сменить</button>
   </div>
-  <p class="small">WASD — движение. Поворачивай камеру пальцем справа. Выбери NPC, чтобы общаться с ним через локальный ИИ.</p>
+  <p class="small">WASD — движение. Поворачивай камеру пальцем справа. Выбери NPC, чтобы общаться с ним через облачный ИИ.</p>
 </section>
 
 <aside class="side">
@@ -100,10 +81,9 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:10px;padding:10p
     <div id="chat"></div>
     <form class="row" id="chatform">
       <input id="message" maxlength="180" placeholder="Напиши NPC...">
-      <button>➤</button>
+      <button type="submit">➤</button>
     </form>
-    <button id="loadAI" style="width:100%;margin-top:8px">🧠 Загрузить локальный ИИ</button>
-    <p class="small">Локальная модель загружается в браузер при первом запуске.</p>
+    <p class="small">Ответы персонажей генерируются облачным ИИ. Локальная модель на телефоне не загружается.</p>
   </section>
 
   <section class="panel chatpanel">
@@ -123,11 +103,6 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 
 const $=s=>document.querySelector(s);
 const canvas=$("#game"),status=$("#status"),people=$("#people"),chat=$("#chat");
-const modelLoading=$("#modelLoading");
-const modelBar=$("#modelBar");
-const modelPercent=$("#modelPercent");
-const modelStatus=$("#modelStatus");
-const modelRetry=$("#modelRetry");
 const globalChat=$("#globalChat");
 const networkStatus=$("#networkStatus");
 
@@ -223,7 +198,7 @@ const memory=new Map();
 let myId="local-player";
 let selectedId="npc-1";
 let myName="Игрок";
-let yaw=0,pitch=.2,ai=null,aiLoading=null;
+let yaw=0,pitch=.2;
 const keys={};
 let lookOn=false,lastX=0,lastY=0;
 let socket=null;
@@ -281,7 +256,6 @@ function avatar(data,isNPC=false){
   label.position.y=2.85;
   group.add(label);
 
-  // Облачко для сообщения над персонажем
   const bubbleCanvas=document.createElement("canvas");
   bubbleCanvas.width=512;
   bubbleCanvas.height=160;
@@ -356,7 +330,6 @@ function addGlobalMessage(name,text){
   globalChat.scrollTop=globalChat.scrollHeight;
 }
 
-/* Показывает сообщение над игроком ровно 5 секунд */
 function showSpeechBubble(player,message){
   if(!player||!player.bubble)return;
 
@@ -364,8 +337,6 @@ function showSpeechBubble(player,message){
   const text=String(message).slice(0,180);
 
   ctx.clearRect(0,0,512,160);
-
-  // Белое облачко
   ctx.fillStyle="#ffffff";
   ctx.strokeStyle="#263449";
   ctx.lineWidth=5;
@@ -375,7 +346,6 @@ function showSpeechBubble(player,message){
   ctx.fill();
   ctx.stroke();
 
-  // Хвостик
   ctx.beginPath();
   ctx.moveTo(220,130);
   ctx.lineTo(250,155);
@@ -384,7 +354,6 @@ function showSpeechBubble(player,message){
   ctx.fill();
   ctx.stroke();
 
-  // Разбиваем текст на строки
   ctx.fillStyle="#111827";
   ctx.font="bold 30px Arial";
   ctx.textAlign="center";
@@ -447,7 +416,7 @@ function select(id){
 
   const a=avatars.get(id);
   $("#selected").textContent=a
-    ?a.name+(a.isNPC?" · локальный ИИ":" · игрок")
+    ?a.name+(a.isNPC?" · облачный ИИ":" · игрок")
     :"";
 
   renderPeople();
@@ -455,107 +424,7 @@ function select(id){
 
 select(selectedId);
 
-/* Загрузка локальной модели */
-function updateModelProgress(percent,message){
-  const value=Math.max(0,Math.min(100,Number(percent)||0));
-  modelBar.style.width=value+"%";
-  modelPercent.textContent=Math.round(value)+"%";
-  if(message)modelStatus.textContent=message;
-}
-
-async function loadAI(){
-  if(ai)return ai;
-  if(aiLoading)return aiLoading;
-
-  modelLoading.style.display="flex";
-  modelRetry.style.display="none";
-  updateModelProgress(0,"Подключение к библиотеке ИИ...");
-  $("#loadAI").textContent="⏳ Загружаю модель...";
-  status.textContent="Загрузка ИИ...";
-
-  aiLoading=(async()=>{
-    const {pipeline,env}=await import(
-      "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2"
-    );
-
-    env.allowLocalModels=false;
-    env.useBrowserCache=true;
-
-    updateModelProgress(0,"Подготовка файлов модели...");
-
-    ai=await pipeline(
-      "text-generation",
-      "HuggingFaceTB/SmolLM2-135M-Instruct",
-      {
-        dtype:"q4",
-        progress_callback:(info)=>{
-          const file=info.file||info.name||"Файл модели";
-
-          if(typeof info.progress==="number"){
-            updateModelProgress(info.progress,"Загрузка: "+file);
-          }else if(
-            typeof info.loaded==="number"&&
-            typeof info.total==="number"&&info.total>0
-          ){
-            updateModelProgress(info.loaded/info.total*100,"Загрузка: "+file);
-          }else if(info.status==="done"){
-            updateModelProgress(100,"Файл готов: "+file);
-          }else if(info.status==="initiate"){
-            modelStatus.textContent="Подготовка файла: "+file;
-          }else if(info.status==="download"){
-            modelStatus.textContent="Началась загрузка: "+file;
-          }else if(info.status){
-            modelStatus.textContent=info.status+": "+file;
-          }
-        }
-      }
-    );
-
-    updateModelProgress(100,"Модель готова к работе!");
-    status.textContent="ИИ готов";
-    $("#loadAI").textContent="🧠 ИИ загружен";
-
-    setTimeout(()=>modelLoading.style.display="none",800);
-    return ai;
-  })();
-
-  try{
-    return await aiLoading;
-  }catch(e){
-    console.error("Ошибка загрузки модели:",e);
-    ai=null;
-    aiLoading=null;
-
-    updateModelProgress(
-      0,
-      "Не удалось загрузить модель. Проверь интернет и свободную память."
-    );
-
-    modelRetry.style.display="block";
-    $("#loadAI").textContent="↻ Повторить загрузку";
-    status.textContent="Ошибка загрузки ИИ";
-    throw e;
-  }
-}
-
-$("#modelRetry").onclick=async()=>{
-  try{
-    await loadAI();
-    say("Система","Модель ИИ загружена.");
-  }catch(e){
-    console.error(e);
-  }
-};
-
-$("#loadAI").onclick=async()=>{
-  try{
-    await loadAI();
-    say("Система","Локальная модель готова к работе.");
-  }catch(e){
-    say("Система","Не удалось загрузить модель. Попробуй ещё раз.");
-  }
-};
-
+/* Быстрые ответы на простые приветствия */
 function instantReply(name,text){
   const s=text.toLowerCase();
 
@@ -593,6 +462,8 @@ function instantReply(name,text){
   return null;
 }
 
+/* Облачный ИИ вызывается на сервере.
+   Локальная нейросеть в браузере не скачивается. */
 async function talk(name,text){
   const fast=instantReply(name,text);
   const hist=memory.get(name)||[];
@@ -607,40 +478,37 @@ async function talk(name,text){
   }
 
   try{
-    const model=await loadAI();
-
-    const prompt=[
-      `<|im_start|>system\n${profiles[name]} Отвечай на русском, естественно и коротко. Ты персонаж игры, а не ИИ-помощник.<|im_end|>`,
-      ...hist.map(m=>`<|im_start|>${m.role}\n${m.content}<|im_end|>`),
-      `<|im_start|>user\n${text}<|im_end|>`,
-      "<|im_start|>assistant\n"
-    ].join("\n");
-
-    const result=await model(prompt,{
-      max_new_tokens:64,
-      do_sample:true,
-      temperature:.7,
-      top_p:.9,
-      return_full_text:false
+    const response=await fetch("/api/npc-chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        name,
+        message:text,
+        history:hist.slice(-8),
+        profile:profiles[name]||"Ты персонаж игры AI WORLD 3D."
+      })
     });
 
-    const answer=String(result?.[0]?.generated_text||"")
-      .replace(/<\|[^>]*\|>/g,"")
-      .trim()
-      .split("\n")[0]
-      .slice(0,300);
+    const data=await response.json();
 
-    const finalAnswer=answer||"Хм, можешь спросить немного иначе?";
+    if(!response.ok){
+      throw new Error(data.error||"Ошибка облачного ИИ");
+    }
+
+    const answer=String(
+      data.reply||"Хм, можешь спросить немного иначе?"
+    ).trim().slice(0,500);
 
     hist.push(
       {role:"user",content:text},
-      {role:"assistant",content:finalAnswer}
+      {role:"assistant",content:answer}
     );
 
     memory.set(name,hist.slice(-8));
-    return finalAnswer;
+    return answer;
   }catch(e){
-    return "Я пока не смог загрузить нейросеть. Попробуй ещё раз.";
+    console.error("NPC chat:",e);
+    return "Сейчас не получается подключиться к облачному ИИ. Попробуй ещё раз.";
   }
 }
 
@@ -739,7 +607,6 @@ function connectMultiplayer(){
     if(data.type==="welcome"){
       myId=data.id;
 
-      // Обновляем ID локального персонажа и ключ в Map
       avatars.delete("local-player");
       me.id=myId;
       avatars.set(myId,me);
@@ -749,7 +616,6 @@ function connectMultiplayer(){
       }
 
       networkStatus.textContent="🟢 Онлайн · игроков: "+(data.players||[]).length;
-
       addGlobalMessage("Система","Ты подключился к общему чату AI WORLD.");
 
       (data.players||[]).forEach(p=>{
@@ -866,7 +732,6 @@ function removeRemotePlayer(id){
   const a=avatars.get(id);
   if(!a||!a.isRemote)return;
 
-  // Останавливаем таймер и освобождаем текстуру облачка
   if(a.bubbleTimer){
     clearTimeout(a.bubbleTimer);
     a.bubbleTimer=null;
